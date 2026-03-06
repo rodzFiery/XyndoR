@@ -141,5 +141,34 @@ class DailyRewards(commands.Cog):
         
         await ctx.send(file=logo_file, embed=embed)
 
+    # --- UPDATED: PERSONAL STREAK COMMAND ---
+    @commands.command(name="dailylb")
+    async def dailylb(self, ctx):
+        user_id = str(ctx.author.id)
+        
+        # Get data or default if user has never interacted
+        data = self.user_data.get(user_id, {})
+        streaks = data.get("streaks", {"daily": 0, "weekly": 0, "monthly": 0})
+        balance = data.get("balance", 0)
+
+        # Build the personal stats description
+        stats_description = (
+            f"Hello **{ctx.author.name}**! Here is your global progress:\n\n"
+            f"🔥 **Daily Streak:** {streaks.get('daily', 0)} days\n"
+            f"⚡ **Weekly Streak:** {streaks.get('weekly', 0)} weeks\n"
+            f"💎 **Monthly Streak:** {streaks.get('monthly', 0)} months\n\n"
+            f"💰 **Total Balance:** {balance:,} MoonStars\n"
+            f"🌍 *These stats are linked to your ID across all servers.*"
+        )
+
+        logo_file = discord.File("xyndorlogo.jpeg", filename="xyndorlogo.jpeg")
+        embed = self.create_reward_embed(
+            "📊 Your Personal Streak Statistics",
+            stats_description,
+            discord.Color.purple()
+        )
+        
+        await ctx.send(file=logo_file, embed=embed)
+
 async def setup(bot):
     await bot.add_cog(DailyRewards(bot))
