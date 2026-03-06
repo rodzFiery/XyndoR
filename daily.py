@@ -26,7 +26,6 @@ class DailyRewards(commands.Cog):
         with open(self.data_file, "w") as f:
             json.dump(self.user_data, f, indent=4)
 
-    # --- ADDED: HELPER FOR EMBEDS ---
     def create_reward_embed(self, title, description, color):
         embed = discord.Embed(
             title=title,
@@ -34,56 +33,73 @@ class DailyRewards(commands.Cog):
             color=color,
             timestamp=datetime.now()
         )
-        # Sets the logo at the top right corner
         embed.set_thumbnail(url="attachment://xyndorlogo.jpeg")
         embed.set_footer(text="Xyndor Economy System")
         return embed
-    # --------------------------------
 
     def check_cooldown(self, user_id, reward_type, days):
-        """Checks if the user is on cooldown using stored timestamps."""
-        user_id = str(user_id) # JSON keys must be strings
+        """Checks if the user is on cooldown and handles streak resets."""
+        user_id = str(user_id)
         if user_id not in self.user_data:
-            self.user_data[user_id] = {"balance": 0, "last_claim": {}}
+            self.user_data[user_id] = {"balance": 0, "last_claim": {}, "streaks": {}}
         
+        # Initialize streak data if missing
+        if "streaks" not in self.user_data[user_id]:
+            self.user_data[user_id]["streaks"] = {"daily": 0, "weekly": 0, "monthly": 0}
+
         last_claim_str = self.user_data[user_id]["last_claim"].get(reward_type)
         
         if last_claim_str:
             last_time = datetime.fromisoformat(last_claim_str)
-            if datetime.now() < last_time + timedelta(days=days):
-                return (last_time + timedelta(days=days)) - datetime.now()
+            now = datetime.now()
+            
+            # 1. Check if they are still in cooldown
+            if now < last_time + timedelta(days=days):
+                return (last_time + timedelta(days=days)) - now
+            
+            # 2. Check if they broke their streak (grace period: 2x the cooldown time)
+            if now > last_time + timedelta(days=days * 2):
+                self.user_data[user_id]["streaks"][reward_type] = 0
+                
         return None
 
     async def give_reward(self, ctx, reward_type, min_amt, max_amt, days):
         user_id = str(ctx.author.id)
         wait_time = self.check_cooldown(user_id, reward_type, days)
-
-        # Ensure the logo file exists to send with the embed
         logo_file = discord.File("xyndorlogo.jpeg", filename="xyndorlogo.jpeg")
 
         if wait_time:
             hours, remainder = divmod(int(wait_time.total_seconds()), 3600)
             minutes, _ = divmod(remainder, 60)
             
+            current_streak = self.user_data[user_id]["streaks"].get(reward_type, 0)
             embed = self.create_reward_embed(
                 "❌ | Cooldown Active", 
-                f"Too soon! You can claim your **{reward_type}** in **{hours}h {minutes}m**.",
+                f"Too soon! You can claim your **{reward_type}** in **{hours}h {minutes}m**.\n"
+                f"🔥 **Current Streak:** {current_streak}",
                 discord.Color.red()
             )
             return await ctx.send(file=logo_file, embed=embed)
 
-        # Generate MoonStars and update data
-        amount = random.randint(min_amt, max_amt)
-        self.user_data[user_id]["balance"] += amount
+        # Increment Streak
+        self.user_data[user_id]["streaks"][reward_type] = self.user_data[user_id]["streaks"].get(reward_type, 0) + 1
+        streak_count = self.user_data[user_id]["streaks"][reward_type]
+
+        # Calculate Bonus based on streak (e.g., +5% per streak point)
+        base_amount = random.randint(min_amt, max_amt)
+        bonus = int(base_amount * (streak_count * 0.05)) 
+        total_amount = base_amount + bonus
+
+        self.user_data[user_id]["balance"] += total_amount
         self.user_data[user_id]["last_claim"][reward_type] = datetime.now().isoformat()
-        
         self.save_data()
 
-        # Added Embed response for winning MoonStars
         embed = self.create_reward_embed(
             f"✨ | {reward_type.capitalize()} Reward Claimed!",
             f"Congratulations **{ctx.author.name}**!\n\n"
-            f"💰 **Earned:** {amount:,} MoonStars\n"
+            f"💰 **Base:** {base_amount:,}\n"
+            f"🔥 **Streak Bonus:** +{bonus:,} ({streak_count}x)\n"
+            f"🎁 **Total Earned:** {total_amount:,} MoonStars\n"
             f"🏦 **New Balance:** {self.user_data[user_id]['balance']:,} MoonStars",
             discord.Color.gold()
         )
@@ -105,13 +121,21 @@ class DailyRewards(commands.Cog):
     @commands.command()
     async def balance(self, ctx):
         user_id = str(ctx.author.id)
-        amt = self.user_data.get(user_id, {}).get("balance", 0)
+        if user_id not in self.user_data:
+            self.user_data[user_id] = {"balance": 0, "last_claim": {}, "streaks": {"daily": 0, "weekly": 0, "monthly": 0}}
+            
+        amt = self.user_data[user_id]["balance"]
+        streaks = self.user_data[user_id].get("streaks", {"daily": 0, "weekly": 0, "monthly": 0})
         
         logo_file = discord.File("xyndorlogo.jpeg", filename="xyndorlogo.jpeg")
         embed = self.create_reward_embed(
             "💰 Account Balance",
             f"**User:** {ctx.author.mention}\n"
-            f"**Total:** {amt:,} MoonStars",
+            f"**Total:** {amt:,} MoonStars\n\n"
+            f"**Streaks:**\n"
+            f"📅 Daily: {streaks.get('daily', 0)}\n"
+            f"🗓️ Weekly: {streaks.get('weekly', 0)}\n"
+            f"🌙 Monthly: {streaks.get('monthly', 0)}",
             discord.Color.blue()
         )
         
