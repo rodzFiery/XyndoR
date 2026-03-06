@@ -26,6 +26,20 @@ class DailyRewards(commands.Cog):
         with open(self.data_file, "w") as f:
             json.dump(self.user_data, f, indent=4)
 
+    # --- ADDED: HELPER FOR EMBEDS ---
+    def create_reward_embed(self, title, description, color):
+        embed = discord.Embed(
+            title=title,
+            description=description,
+            color=color,
+            timestamp=datetime.now()
+        )
+        # Sets the logo at the top right corner
+        embed.set_thumbnail(url="attachment://xyndorlogo.jpeg")
+        embed.set_footer(text="Xyndor Economy System")
+        return embed
+    # --------------------------------
+
     def check_cooldown(self, user_id, reward_type, days):
         """Checks if the user is on cooldown using stored timestamps."""
         user_id = str(user_id) # JSON keys must be strings
@@ -44,20 +58,37 @@ class DailyRewards(commands.Cog):
         user_id = str(ctx.author.id)
         wait_time = self.check_cooldown(user_id, reward_type, days)
 
+        # Ensure the logo file exists to send with the embed
+        logo_file = discord.File("xyndorlogo.jpeg", filename="xyndorlogo.jpeg")
+
         if wait_time:
             hours, remainder = divmod(int(wait_time.total_seconds()), 3600)
             minutes, _ = divmod(remainder, 60)
-            return await ctx.send(f"❌ | Too soon! You can claim your {reward_type} in **{hours}h {minutes}m**.")
+            
+            embed = self.create_reward_embed(
+                "❌ | Cooldown Active", 
+                f"Too soon! You can claim your **{reward_type}** in **{hours}h {minutes}m**.",
+                discord.Color.red()
+            )
+            return await ctx.send(file=logo_file, embed=embed)
 
         # Generate MoonStars and update data
         amount = random.randint(min_amt, max_amt)
         self.user_data[user_id]["balance"] += amount
         self.user_data[user_id]["last_claim"][reward_type] = datetime.now().isoformat()
         
-        # ADDED: Save immediately after change
         self.save_data()
 
-        await ctx.send(f"✨ | **{ctx.author.name}**, you earned **{amount:,} MoonStars**! Total: **{self.user_data[user_id]['balance']:,}**")
+        # Added Embed response for winning MoonStars
+        embed = self.create_reward_embed(
+            f"✨ | {reward_type.capitalize()} Reward Claimed!",
+            f"Congratulations **{ctx.author.name}**!\n\n"
+            f"💰 **Earned:** {amount:,} MoonStars\n"
+            f"🏦 **New Balance:** {self.user_data[user_id]['balance']:,} MoonStars",
+            discord.Color.gold()
+        )
+        
+        await ctx.send(file=logo_file, embed=embed)
 
     @commands.command()
     async def daily(self, ctx):
@@ -75,7 +106,16 @@ class DailyRewards(commands.Cog):
     async def balance(self, ctx):
         user_id = str(ctx.author.id)
         amt = self.user_data.get(user_id, {}).get("balance", 0)
-        await ctx.send(f"💰 | **{ctx.author.name}**, your balance is **{amt:,} MoonStars**.")
+        
+        logo_file = discord.File("xyndorlogo.jpeg", filename="xyndorlogo.jpeg")
+        embed = self.create_reward_embed(
+            "💰 Account Balance",
+            f"**User:** {ctx.author.mention}\n"
+            f"**Total:** {amt:,} MoonStars",
+            discord.Color.blue()
+        )
+        
+        await ctx.send(file=logo_file, embed=embed)
 
 async def setup(bot):
     await bot.add_cog(DailyRewards(bot))
