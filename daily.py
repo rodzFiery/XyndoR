@@ -38,7 +38,7 @@ class DailyRewards(commands.Cog):
         return embed
 
     def check_cooldown(self, user_id, reward_type, days):
-        """Checks if the user is on cooldown. Streak reset logic removed for persistence."""
+        """Checks if the user is on cooldown. Reset logic removed for permanent streaks."""
         user_id = str(user_id)
         if user_id not in self.user_data:
             self.user_data[user_id] = {"balance": 0, "last_claim": {}, "streaks": {}}
@@ -57,7 +57,8 @@ class DailyRewards(commands.Cog):
             if now < last_time + timedelta(days=days):
                 return (last_time + timedelta(days=days)) - now
             
-            # STREAK RESET REMOVED: Streaks now stay forever until the next claim increases them.
+            # FIXED: Removed the streak reset condition (now > last_time + timedelta...)
+            # This ensures streaks are NEVER deleted even if the user waits a year to claim.
                 
         return None
 
@@ -139,17 +140,13 @@ class DailyRewards(commands.Cog):
         
         await ctx.send(file=logo_file, embed=embed)
 
-    # --- UPDATED: PERSONAL STREAK COMMAND ---
     @commands.command(name="dailylb")
     async def dailylb(self, ctx):
         user_id = str(ctx.author.id)
-        
-        # Get data or default if user has never interacted
         data = self.user_data.get(user_id, {})
         streaks = data.get("streaks", {"daily": 0, "weekly": 0, "monthly": 0})
         balance = data.get("balance", 0)
 
-        # Build the personal stats description
         stats_description = (
             f"Hello **{ctx.author.name}**! Here is your global progress:\n\n"
             f"🔥 **Daily Streak:** {streaks.get('daily', 0)} days\n"
@@ -165,7 +162,6 @@ class DailyRewards(commands.Cog):
             stats_description,
             discord.Color.purple()
         )
-        
         await ctx.send(file=logo_file, embed=embed)
 
 async def setup(bot):
