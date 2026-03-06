@@ -21,6 +21,17 @@ async def on_ready():
 async def ping(ctx):
     await ctx.send(f'Pong! {round(bot.latency * 1000)}ms')
 
+# --- ADDED CODE TO LOAD COGS ---
+async def load_extensions():
+    # This looks for daily.py in the same folder and loads it
+    await bot.load_extension('daily')
+
+# We override the setup_hook to run our loader
+@bot.event
+async def setup_hook():
+    await load_extensions()
+# ------------------------------
+
 # 5. Run the Bot using the Railway environment variable
 if __name__ == "__main__":
     # Ensure you added 'DISCORD_TOKEN' in Railway's Variables tab
