@@ -38,7 +38,7 @@ class DailyRewards(commands.Cog):
         return embed
 
     def check_cooldown(self, user_id, reward_type, days):
-        """Checks if the user is on cooldown and handles streak resets."""
+        """Checks if the user is on cooldown. Streak reset logic removed for persistence."""
         user_id = str(user_id)
         if user_id not in self.user_data:
             self.user_data[user_id] = {"balance": 0, "last_claim": {}, "streaks": {}}
@@ -57,9 +57,7 @@ class DailyRewards(commands.Cog):
             if now < last_time + timedelta(days=days):
                 return (last_time + timedelta(days=days)) - now
             
-            # 2. Check if they broke their streak (grace period: 2x the cooldown time)
-            if now > last_time + timedelta(days=days * 2):
-                self.user_data[user_id]["streaks"][reward_type] = 0
+            # STREAK RESET REMOVED: Streaks now stay forever until the next claim increases them.
                 
         return None
 
