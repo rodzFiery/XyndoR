@@ -8,22 +8,26 @@ from datetime import datetime, timedelta
 class DailyRewards(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.data_file = "daily_data.json"
+        # Use the /app/data path so the file stays on the Railway Volume
+        # Note: If testing locally, you may need to create this folder manually
+        self.data_file = "/app/data/daily_data.json"
         self.user_data = self.load_data()
 
     def load_data(self):
-        """Loads user data from the JSON file."""
+        """Loads user data from the JSON file, creating the directory if needed."""
+        # Ensure the directory exists so the bot doesn't crash on first save
+        os.makedirs(os.path.dirname(self.data_file), exist_ok=True)
+        
         if not os.path.exists(self.data_file):
             return {}
         try:
             with open(self.data_file, "r") as f:
                 return json.load(f)
         except (json.JSONDecodeError, IOError):
-            # If the file is empty or corrupted, return an empty dict
             return {}
 
     def save_data(self):
-        """Saves current user data to the JSON file."""
+        """Saves current user data to the JSON file on the persistent volume."""
         with open(self.data_file, "w") as f:
             json.dump(self.user_data, f, indent=4)
 
@@ -39,19 +43,17 @@ class DailyRewards(commands.Cog):
         return embed
 
     def check_cooldown(self, user_id, reward_type, days):
-        """Checks if the user is on cooldown and ensures data structure exists."""
+        """Checks if the user is on cooldown and handles initialization."""
         user_id = str(user_id)
         
-        # Initialize user if they don't exist in the JSON yet
         if user_id not in self.user_data:
             self.user_data[user_id] = {
                 "balance": 0, 
                 "last_claim": {}, 
                 "streaks": {"daily": 0, "weekly": 0, "monthly": 0}
             }
-            self.save_data() # Save immediately so the structure persists
+            self.save_data()
         
-        # Ensure 'streaks' key exists for older data entries
         if "streaks" not in self.user_data[user_id]:
             self.user_data[user_id]["streaks"] = {"daily": 0, "weekly": 0, "monthly": 0}
             self.save_data()
@@ -59,11 +61,9 @@ class DailyRewards(commands.Cog):
         last_claim_str = self.user_data[user_id]["last_claim"].get(reward_type)
         
         if last_claim_str:
-            # Convert the ISO string from JSON back into a Python datetime object
             last_time = datetime.fromisoformat(last_claim_str)
             now = datetime.now()
             
-            # If current time is less than the required wait time, return the remaining time
             if now < last_time + timedelta(days=days):
                 return (last_time + timedelta(days=days)) - now
                 
@@ -75,7 +75,6 @@ class DailyRewards(commands.Cog):
         logo_file = discord.File("xyndorlogo.jpeg", filename="xyndorlogo.jpeg")
 
         if wait_time:
-            # Calculate hours and minutes for the error message
             total_seconds = int(wait_time.total_seconds())
             hours, remainder = divmod(total_seconds, 3600)
             minutes, _ = divmod(remainder, 60)
@@ -89,22 +88,18 @@ class DailyRewards(commands.Cog):
             )
             return await ctx.send(file=logo_file, embed=embed)
 
-        # Logic for processing a successful claim
-        # 1. Update Streak
+        # Increment Streak
         self.user_data[user_id]["streaks"][reward_type] = self.user_data[user_id]["streaks"].get(reward_type, 0) + 1
         streak_count = self.user_data[user_id]["streaks"][reward_type]
 
-        # 2. Calculate Payout
+        # Calculate Payouts
         base_amount = random.randint(min_amt, max_amt)
         bonus = int(base_amount * (streak_count * 0.05)) 
         total_amount = base_amount + bonus
 
-        # 3. Update Balance and Timestamp
+        # Update and Save
         self.user_data[user_id]["balance"] += total_amount
         self.user_data[user_id]["last_claim"][reward_type] = datetime.now().isoformat()
-        
-        # 4. Save to daily_data.json IMMEDIATELY before sending the Discord message
-        # This prevents "re-roll" exploits if the bot crashes right after claiming
         self.save_data()
 
         embed = self.create_reward_embed(
@@ -134,7 +129,6 @@ class DailyRewards(commands.Cog):
     @commands.command()
     async def balance(self, ctx):
         user_id = str(ctx.author.id)
-        # Handle cases where balance is called before any claims
         if user_id not in self.user_data:
             self.user_data[user_id] = {"balance": 0, "last_claim": {}, "streaks": {"daily": 0, "weekly": 0, "monthly": 0}}
             self.save_data()
@@ -180,7 +174,5 @@ class DailyRewards(commands.Cog):
         )
         await ctx.send(file=logo_file, embed=embed)
 
-async def setup(bot):
-    await bot.add_cog(DailyRewards(bot))
 async def setup(bot):
     await bot.add_cog(DailyRewards(bot))
