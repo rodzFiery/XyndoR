@@ -14,39 +14,45 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 async def on_ready():
     print(f'Logged in as {bot.user.name} (ID: {bot.user.id})')
     print('------')
+    print('Bot is online and ready to process commands!')
 
 # 4. Add a Basic Command
 @bot.command()
 async def ping(ctx):
     await ctx.send(f'Pong! {round(bot.latency * 1000)}ms')
 
-# --- UPDATED LOAD COGS LOGIC ---
+# --- DYNAMIC COG LOADER ---
 async def load_extensions():
     """
-    Automatically loads both daily.py and classes.py.
-    This logic will also load any future .py files you add!
+    This loop automatically finds and loads:
+    - daily.py
+    - classes.py
+    - profile.py
+    - Any other .py files you add in the future!
     """
     for filename in os.listdir('./'):
+        # We only load .py files, and we ignore main.py itself
         if filename.endswith('.py') and filename != 'main.py':
             try:
-                # This loads 'daily', 'classes', etc.
+                # filename[:-3] removes the '.py' extension
                 await bot.load_extension(filename[:-3])
-                print(f'Successfully loaded: {filename}')
+                print(f'✅ Successfully loaded extension: {filename}')
             except Exception as e:
-                print(f'Failed to load {filename}: {e}')
+                print(f'❌ Failed to load extension {filename}: {e}')
 
-# We override the setup_hook to run our loader
+# We use the setup_hook to run our loader before the bot starts
 @bot.event
 async def setup_hook():
+    print('Starting extension loading process...')
     await load_extensions()
 # ------------------------------
 
-# 5. Run the Bot using the Railway environment variable
+# 5. Run the Bot
 if __name__ == "__main__":
-    # Ensure you added 'DISCORD_TOKEN' in Railway's Variables tab
+    # Ensure 'DISCORD_TOKEN' is set in your Railway 'Variables' tab
     TOKEN = os.getenv('DISCORD_TOKEN')
     
     if TOKEN:
         bot.run(TOKEN)
     else:
-        print("Error: DISCORD_TOKEN not found in environment variables.")
+        print("CRITICAL ERROR: DISCORD_TOKEN not found in environment variables.")
