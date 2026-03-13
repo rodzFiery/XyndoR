@@ -7,7 +7,6 @@ intents = discord.Intents.default()
 intents.message_content = True  # Allows the bot to read message content
 
 # 2. Initialize the Bot
-# We use commands.Bot for full functionality
 bot = commands.Bot(command_prefix='!', intents=intents)
 
 # 3. Add an Event: On Ready
@@ -21,10 +20,20 @@ async def on_ready():
 async def ping(ctx):
     await ctx.send(f'Pong! {round(bot.latency * 1000)}ms')
 
-# --- ADDED CODE TO LOAD COGS ---
+# --- UPDATED LOAD COGS LOGIC ---
 async def load_extensions():
-    # This looks for daily.py in the same folder and loads it
-    await bot.load_extension('daily')
+    """
+    Automatically loads both daily.py and classes.py.
+    This logic will also load any future .py files you add!
+    """
+    for filename in os.listdir('./'):
+        if filename.endswith('.py') and filename != 'main.py':
+            try:
+                # This loads 'daily', 'classes', etc.
+                await bot.load_extension(filename[:-3])
+                print(f'Successfully loaded: {filename}')
+            except Exception as e:
+                print(f'Failed to load {filename}: {e}')
 
 # We override the setup_hook to run our loader
 @bot.event
