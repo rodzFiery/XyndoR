@@ -9,15 +9,12 @@ class DailyRewards(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         # Use the /app/data path so the file stays on the Railway Volume
-        # Note: If testing locally, you may need to create this folder manually
         self.data_file = "/app/data/daily_data.json"
         self.user_data = self.load_data()
 
     def load_data(self):
         """Loads user data from the JSON file, creating the directory if needed."""
-        # Ensure the directory exists so the bot doesn't crash on first save
         os.makedirs(os.path.dirname(self.data_file), exist_ok=True)
-        
         if not os.path.exists(self.data_file):
             return {}
         try:
@@ -45,12 +42,13 @@ class DailyRewards(commands.Cog):
     def check_cooldown(self, user_id, reward_type, days):
         """Checks if the user is on cooldown and handles initialization."""
         user_id = str(user_id)
-        
         if user_id not in self.user_data:
             self.user_data[user_id] = {
                 "balance": 0, 
                 "last_claim": {}, 
-                "streaks": {"daily": 0, "weekly": 0, "monthly": 0}
+                "streaks": {"daily": 0, "weekly": 0, "monthly": 0},
+                "xp": 0,
+                "class": "none"
             }
             self.save_data()
         
@@ -58,15 +56,16 @@ class DailyRewards(commands.Cog):
             self.user_data[user_id]["streaks"] = {"daily": 0, "weekly": 0, "monthly": 0}
             self.save_data()
 
+        # Add XP field if it doesn't exist for old users
+        if "xp" not in self.user_data[user_id]:
+            self.user_data[user_id]["xp"] = 0
+
         last_claim_str = self.user_data[user_id]["last_claim"].get(reward_type)
-        
         if last_claim_str:
             last_time = datetime.fromisoformat(last_claim_str)
             now = datetime.now()
-            
             if now < last_time + timedelta(days=days):
                 return (last_time + timedelta(days=days)) - now
-                
         return None
 
     async def give_reward(self, ctx, reward_type, min_amt, max_amt, days):
@@ -78,7 +77,6 @@ class DailyRewards(commands.Cog):
             total_seconds = int(wait_time.total_seconds())
             hours, remainder = divmod(total_seconds, 3600)
             minutes, _ = divmod(remainder, 60)
-            
             current_streak = self.user_data[user_id]["streaks"].get(reward_type, 0)
             embed = self.create_reward_embed(
                 "❌ | Cooldown Active", 
@@ -88,30 +86,49 @@ class DailyRewards(commands.Cog):
             )
             return await ctx.send(file=logo_file, embed=embed)
 
-        # Increment Streak
+        # 1. Streak Logic
         self.user_data[user_id]["streaks"][reward_type] = self.user_data[user_id]["streaks"].get(reward_type, 0) + 1
         streak_count = self.user_data[user_id]["streaks"][reward_type]
 
-        # Calculate Payouts
+        # 2. Base Calculation
         base_amount = random.randint(min_amt, max_amt)
-        bonus = int(base_amount * (streak_count * 0.05)) 
-        total_amount = base_amount + bonus
+        streak_bonus = int(base_amount * (streak_count * 0.05)) 
 
-        # Update and Save
+        # 3. Class Bonus Logic (MoonStars & XP)
+        user_class = self.user_data[user_id].get("class", "none")
+        class_money_bonus = 0
+        xp_gain = 100 # Default base XP
+
+        if user_class == "dominant":
+            class_money_bonus = int(base_amount * 0.10)
+            xp_gain = int(xp_gain * 1.2)
+        elif user_class == "submissive":
+            class_money_bonus = int(base_amount * 0.05)
+            xp_gain = int(xp_gain * 1.5)
+        elif user_class == "switch":
+            class_money_bonus = int(base_amount * 0.08)
+            xp_gain = int(xp_gain * 1.3)
+
+        total_amount = base_amount + streak_bonus + class_money_bonus
+        
+        # Update Data
         self.user_data[user_id]["balance"] += total_amount
+        self.user_data[user_id]["xp"] += xp_gain
         self.user_data[user_id]["last_claim"][reward_type] = datetime.now().isoformat()
         self.save_data()
 
         embed = self.create_reward_embed(
             f"✨ | {reward_type.capitalize()} Reward Claimed!",
-            f"Congratulations **{ctx.author.name}**!\n\n"
+            f"Congratulations **{ctx.author.name}**!\n"
+            f"🎭 **Class:** {user_class.capitalize()}\n\n"
             f"💰 **Base:** {base_amount:,}\n"
-            f"🔥 **Streak Bonus:** +{bonus:,} ({streak_count}x)\n"
+            f"🔥 **Streak Bonus:** +{streak_bonus:,}\n"
+            f"💎 **Class Bonus:** +{class_money_bonus:,}\n"
             f"🎁 **Total Earned:** {total_amount:,} MoonStars\n"
+            f"✨ **XP Gained:** +{xp_gain} XP\n\n"
             f"🏦 **New Balance:** {self.user_data[user_id]['balance']:,} MoonStars",
             discord.Color.gold()
         )
-        
         await ctx.send(file=logo_file, embed=embed)
 
     @commands.command()
@@ -130,24 +147,27 @@ class DailyRewards(commands.Cog):
     async def balance(self, ctx):
         user_id = str(ctx.author.id)
         if user_id not in self.user_data:
-            self.user_data[user_id] = {"balance": 0, "last_claim": {}, "streaks": {"daily": 0, "weekly": 0, "monthly": 0}}
+            self.user_data[user_id] = {"balance": 0, "last_claim": {}, "streaks": {"daily": 0, "weekly": 0, "monthly": 0}, "xp": 0, "class": "none"}
             self.save_data()
             
         amt = self.user_data[user_id]["balance"]
+        xp = self.user_data[user_id].get("xp", 0)
+        u_class = self.user_data[user_id].get("class", "None")
         streaks = self.user_data[user_id].get("streaks", {"daily": 0, "weekly": 0, "monthly": 0})
         
         logo_file = discord.File("xyndorlogo.jpeg", filename="xyndorlogo.jpeg")
         embed = self.create_reward_embed(
             "💰 Account Balance",
             f"**User:** {ctx.author.mention}\n"
-            f"**Total:** {amt:,} MoonStars\n\n"
+            f"**Class:** {u_class.capitalize()}\n"
+            f"**Total:** {amt:,} MoonStars\n"
+            f"**Experience:** {xp:,} XP\n\n"
             f"**Streaks:**\n"
             f"📅 Daily: {streaks.get('daily', 0)}\n"
             f"🗓️ Weekly: {streaks.get('weekly', 0)}\n"
             f"🌙 Monthly: {streaks.get('monthly', 0)}",
             discord.Color.blue()
         )
-        
         await ctx.send(file=logo_file, embed=embed)
 
     @commands.command(name="dailylb")
@@ -156,6 +176,7 @@ class DailyRewards(commands.Cog):
         data = self.user_data.get(user_id, {})
         streaks = data.get("streaks", {"daily": 0, "weekly": 0, "monthly": 0})
         balance = data.get("balance", 0)
+        xp = data.get("xp", 0)
 
         stats_description = (
             f"Hello **{ctx.author.name}**! Here is your global progress:\n\n"
@@ -163,6 +184,7 @@ class DailyRewards(commands.Cog):
             f"⚡ **Weekly Streak:** {streaks.get('weekly', 0)} weeks\n"
             f"💎 **Monthly Streak:** {streaks.get('monthly', 0)} months\n\n"
             f"💰 **Total Balance:** {balance:,} MoonStars\n"
+            f"✨ **Total XP:** {xp:,}\n"
             f"🌍 *These stats are linked to your ID across all servers.*"
         )
 
